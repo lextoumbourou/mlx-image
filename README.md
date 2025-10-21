@@ -13,6 +13,33 @@ This repository is meant to convert image models from timm/torchvision to Apple 
 pip install mlx-image
 ```
 
+## Development Setup
+
+To set up the development environment:
+
+1. **Create a virtual environment using uv:**
+   ```bash
+   uv venv
+   source .venv/bin/activate
+   ```
+
+2. **Install the package with development dependencies:**
+   ```bash
+   uv pip install -e .[dev,test]
+   ```
+
+3. **Install pre-commit hooks:**
+   ```bash
+   pre-commit install
+   ```
+
+4. **Before committing changes, run the format command:**
+   ```bash
+   make format
+   ```
+
+This will ensure your code is properly formatted and passes all checks (ruff, black, mypy).
+
 ## Models
 
 Model weights are available on the [`mlx-vision`](https://huggingface.co/mlx-vision) community on HuggingFace.
@@ -42,7 +69,7 @@ List of all models available in `mlx-image`:
 * **ResNet**: resnet18, resnet34, resnet50, resnet101, resnet152, wide_resnet50_2, wide_resnet101_2
 * **ViT**:
     * **supervised**: vit_base_patch16_224, vit_base_patch16_224.swag_lin, vit_base_patch16_384.swag_e2e, vit_base_patch32_224, vit_large_patch16_224, vit_large_patch16_224, vit_large_patch16_224.swag_lin, vit_large_patch16_512.swag_e2e, vit_huge_patch14_224.swag_lin, vit_huge_patch14_518.swag_e2e
-    
+
     * **DINO v1**: vit_base_patch16_224.dino, vit_small_patch16_224.dino, vit_small_patch8_224.dino, vit_base_patch8_224.dino
 
     * **DINO v2**: vit_small_patch14_518.dinov2, vit_base_patch14_518.dinov2, vit_large_patch14_518.dinov2
