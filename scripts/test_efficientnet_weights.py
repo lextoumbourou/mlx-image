@@ -1,9 +1,7 @@
 """Test EfficientNet with MLX-format weights.
 
-Before running this test, convert the PyTorch weights using:
-  python convert_efficientnet_weights.py \
-    src/mlxim/model/efficientnet/weights/model.safetensors \
-    src/mlxim/model/efficientnet/weights/model_mlx.safetensors
+Before running this test, download and convert the PyTorch weights using:
+  python scripts/convert_efficientnet_weights.py
 """
 
 import mlx.core as mx
@@ -14,7 +12,7 @@ from mlxim.model.efficientnet.efficientnet import efficientnet_b0
 model = efficientnet_b0()
 
 # Load MLX-format weights
-weights = mx.load("src/mlxim/model/efficientnet/weights/model_mlx.safetensors")
+weights = mx.load("weights/model_mlx.safetensors")
 print(f"Loaded {len(weights)} weight tensors from MLX-format file")
 
 # Load weights into model

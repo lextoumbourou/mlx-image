@@ -1,17 +1,19 @@
 """Convert PyTorch EfficientNet weights to MLX format.
 
 This script:
-1. Loads PyTorch EfficientNet weights from a safetensors file
-2. Renames conv_reduce/conv_expand to fc1/fc2 (MLX naming convention)
-3. Transposes conv weights from PyTorch format (O,I,H,W) to MLX format (O,H,W,I)
-4. Filters out PyTorch-specific parameters (num_batches_tracked)
-5. Saves the converted weights to a new safetensors file
+1. Downloads PyTorch EfficientNet weights from HuggingFace Hub (timm models)
+2. Transposes conv weights from PyTorch format (O,I,H,W) to MLX format (O,H,W,I)
+3. Filters out PyTorch-specific parameters (num_batches_tracked)
+4. Saves the converted weights to weights/ directory
+
+Note: SE layer weights (conv_reduce/conv_expand) are kept as-is, matching timm naming.
 """
 
 import argparse
 from pathlib import Path
 
 import mlx.core as mx
+from huggingface_hub import hf_hub_download
 
 
 def convert_weights(input_path: str, output_path: str) -> None:
@@ -27,7 +29,6 @@ def convert_weights(input_path: str, output_path: str) -> None:
 
     converted_weights = {}
     skipped_count = 0
-    renamed_count = 0
     transposed_count = 0
 
     for key, value in weights.items():
@@ -35,14 +36,6 @@ def convert_weights(input_path: str, output_path: str) -> None:
         if key.endswith("num_batches_tracked"):
             skipped_count += 1
             continue
-
-        # Rename SE layer parameters from PyTorch to MLX convention
-        if ".se.conv_reduce." in key:
-            key = key.replace(".se.conv_reduce.", ".se.fc1.")
-            renamed_count += 1
-        elif ".se.conv_expand." in key:
-            key = key.replace(".se.conv_expand.", ".se.fc2.")
-            renamed_count += 1
 
         # Transpose 4D conv weights from PyTorch (O,I,H,W) to MLX (O,H,W,I)
         if "weight" in key and len(value.shape) == 4:
@@ -53,7 +46,6 @@ def convert_weights(input_path: str, output_path: str) -> None:
 
     print("\nConversion summary:")
     print(f"  - Skipped {skipped_count} num_batches_tracked parameters")
-    print(f"  - Renamed {renamed_count} SE layer parameters")
     print(f"  - Transposed {transposed_count} conv weight tensors")
     print(f"  - Total output parameters: {len(converted_weights)}")
 
@@ -62,25 +54,68 @@ def convert_weights(input_path: str, output_path: str) -> None:
     print("✓ Conversion complete!")
 
 
+def download_timm_weights(model_name: str, repo_id: str, output_dir: Path) -> str:
+    """Download timm model weights from HuggingFace Hub.
+
+    Args:
+        model_name: Name of the model (e.g., "efficientnet_b0")
+        repo_id: HuggingFace Hub repository ID (e.g., "timm/efficientnet_b0.ra_in1k")
+        output_dir: Directory to save the downloaded weights
+
+    Returns:
+        Path to the downloaded weights file
+    """
+    filename = "model.safetensors"
+
+    print(f"Downloading {model_name} from {repo_id}...")
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    model_path = hf_hub_download(
+        repo_id=repo_id,
+        filename=filename,
+        local_dir=str(output_dir),
+    )
+
+    print(f"✓ Downloaded {model_name} weights to: {model_path}")
+    return model_path
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Convert PyTorch EfficientNet weights to MLX format")
-    parser.add_argument("input_path", type=str, help="Path to input safetensors file (PyTorch format)")
-    parser.add_argument("output_path", type=str, help="Path to output safetensors file (MLX format)")
+    parser = argparse.ArgumentParser(
+        description="Download and convert PyTorch EfficientNet weights to MLX format"
+    )
+    parser.add_argument(
+        "--model",
+        type=str,
+        default="efficientnet_b0",
+        help="Model name (default: efficientnet_b0)",
+    )
+    parser.add_argument(
+        "--repo-id",
+        type=str,
+        default="timm/efficientnet_b0.ra_in1k",
+        help="HuggingFace Hub repository ID (default: timm/efficientnet_b0.ra_in1k)",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=str,
+        default="weights",
+        help="Output directory for weights (default: weights)",
+    )
 
     args = parser.parse_args()
 
-    # Check input file exists
-    if not Path(args.input_path).exists():
-        print(f"Error: Input file not found: {args.input_path}")
-        return 1
+    output_dir = Path(args.output_dir)
+    output_dir.mkdir(parents=True, exist_ok=True)
 
-    # Create output directory if needed
-    output_dir = Path(args.output_path).parent
-    if output_dir != Path(".") and not output_dir.exists():
-        print(f"Creating output directory: {output_dir}")
-        output_dir.mkdir(parents=True, exist_ok=True)
+    # Download PyTorch weights from HuggingFace Hub
+    pytorch_weights_path = download_timm_weights(args.model, args.repo_id, output_dir)
 
-    convert_weights(args.input_path, args.output_path)
+    # Convert to MLX format
+    mlx_weights_path = output_dir / "model_mlx.safetensors"
+    convert_weights(pytorch_weights_path, str(mlx_weights_path))
+
+    print(f"\n✓ All done! MLX weights saved to: {mlx_weights_path}")
     return 0
 
 

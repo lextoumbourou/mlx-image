@@ -4,7 +4,8 @@ from typing import Callable, List, Optional
 import mlx.core as mx
 import mlx.nn as nn
 
-from ..layers.misc import Conv2dNormActivation, SqueezeExcitation, StochasticDepth
+from ._efficientnet_blocks import SqueezeExcite
+from ..layers.misc import Conv2dNormActivation, StochasticDepth
 from ..layers.pool import AdaptiveAvgPool2d
 from ..layers.utils import _make_divisible
 
@@ -56,12 +57,11 @@ class MBConvBlock(nn.Module):
             )
 
             # SE operates on input channels
-            squeeze_channels = max(1, int(in_channels * se_ratio))
-            self.se = SqueezeExcitation(
-                input_channels=in_channels,
-                squeeze_channels=squeeze_channels,
-                activation=nn.SiLU,
-                scale_activation=nn.Sigmoid,
+            self.se = SqueezeExcite(
+                in_chs=in_channels,
+                rd_ratio=se_ratio,
+                act_layer=nn.SiLU,
+                gate_layer=nn.Sigmoid,
             )
 
             # Projection
@@ -89,12 +89,13 @@ class MBConvBlock(nn.Module):
             self.bn2 = nn.BatchNorm(hidden_dim)
 
             # SE operates on expanded channels
-            squeeze_channels = max(1, int(in_channels * se_ratio))
-            self.se = SqueezeExcitation(
-                input_channels=hidden_dim,
-                squeeze_channels=squeeze_channels,
-                activation=nn.SiLU,
-                scale_activation=nn.Sigmoid,
+            # Note: rd_channels is based on in_channels, not hidden_dim (EfficientNet design)
+            rd_channels = max(1, int(in_channels * se_ratio))
+            self.se = SqueezeExcite(
+                in_chs=hidden_dim,
+                rd_channels=rd_channels,
+                act_layer=nn.SiLU,
+                gate_layer=nn.Sigmoid,
             )
 
             # Projection
