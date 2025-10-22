@@ -147,30 +147,60 @@ class EfficientNet(nn.Module):
         num_classes (int): number of output classes. Defaults to 1000.
         drop_rate (float): dropout rate before classifier. Defaults to 0.2.
         drop_path_rate (float): stochastic depth rate. Defaults to 0.2.
+        depth_multiplier (float): depth scaling multiplier. Defaults to 1.0.
+        channel_multiplier (float): channel width scaling multiplier. Defaults to 1.0.
     """
 
-    def __init__(self, num_classes: int = 1000, drop_rate: float = 0.2, drop_path_rate: float = 0.2):
+    def __init__(
+        self,
+        num_classes: int = 1000,
+        drop_rate: float = 0.2,
+        drop_path_rate: float = 0.2,
+        depth_multiplier: float = 1.0,
+        channel_multiplier: float = 1.0,
+    ):
         super().__init__()
         self.num_classes = num_classes
 
-        # EfficientNet-B0 configuration
-        settings = [
-            StageConfig(expand_ratio=1, out_channels=16, num_blocks=1, kernel_size=3, stride=1),  # Stage 0
-            StageConfig(expand_ratio=6, out_channels=24, num_blocks=2, kernel_size=3, stride=2),  # Stage 1
-            StageConfig(expand_ratio=6, out_channels=40, num_blocks=2, kernel_size=5, stride=2),  # Stage 2
-            StageConfig(expand_ratio=6, out_channels=80, num_blocks=3, kernel_size=3, stride=2),  # Stage 3
-            StageConfig(expand_ratio=6, out_channels=112, num_blocks=3, kernel_size=5, stride=1),  # Stage 4
-            StageConfig(expand_ratio=6, out_channels=192, num_blocks=4, kernel_size=5, stride=2),  # Stage 5
-            StageConfig(expand_ratio=6, out_channels=320, num_blocks=1, kernel_size=3, stride=1),  # Stage 6
+        # Base EfficientNet configuration (B0)
+        # Each stage: (expand_ratio, out_channels, num_blocks, kernel_size, stride)
+        base_settings = [
+            (1, 16, 1, 3, 1),  # Stage 0: MBConv1, k3x3
+            (6, 24, 2, 3, 2),  # Stage 1: MBConv6, k3x3
+            (6, 40, 2, 5, 2),  # Stage 2: MBConv6, k5x5
+            (6, 80, 3, 3, 2),  # Stage 3: MBConv6, k3x3
+            (6, 112, 3, 5, 1),  # Stage 4: MBConv6, k5x5
+            (6, 192, 4, 5, 2),  # Stage 5: MBConv6, k5x5
+            (6, 320, 1, 3, 1),  # Stage 6: MBConv6, k3x3
         ]
 
-        # Stem: conv3x3 with 224x224 resolution, 3->32 channels
-        self.conv_stem = nn.Conv2d(in_channels=3, out_channels=32, kernel_size=3, stride=2, padding=1, bias=False)
-        self.bn1 = nn.BatchNorm(32)
+        # Apply scaling to create the configuration
+        settings = []
+        for expand_ratio, base_channels, base_blocks, kernel_size, stride in base_settings:
+            # Scale channels (round to nearest 8)
+            out_channels = _make_divisible(base_channels * channel_multiplier, 8)
+            # Scale depth (use ceiling to match timm)
+            num_blocks = int(mx.ceil(base_blocks * depth_multiplier).item())
+            settings.append(
+                StageConfig(
+                    expand_ratio=expand_ratio,
+                    out_channels=out_channels,
+                    num_blocks=num_blocks,
+                    kernel_size=kernel_size,
+                    stride=stride,
+                )
+            )
+
+        # Stem: conv3x3, 3->32 channels (stem size is fixed across variants)
+        stem_size = 32
+        self.conv_stem = nn.Conv2d(
+            in_channels=3, out_channels=stem_size, kernel_size=3, stride=2, padding=1, bias=False
+        )
+        self.bn1 = nn.BatchNorm(stem_size)
 
         # Build MBConv blocks
         self.blocks = []
-        in_channels = 32
+        in_channels = stem_size
 
         # Calculate total number of blocks for stochastic depth
         total_blocks = sum([stage.num_blocks for stage in settings])
@@ -198,14 +228,15 @@ class EfficientNet(nn.Module):
             self.blocks.append(stage_blocks)
             in_channels = stage.out_channels
 
-        # Head
-        self.conv_head = nn.Conv2d(in_channels=320, out_channels=1280, kernel_size=1, bias=False)
-        self.bn2 = nn.BatchNorm(1280)
+        # Head: 1x1 conv to expand to 1280 features (fixed across variants)
+        head_size = 1280
+        self.conv_head = nn.Conv2d(in_channels=in_channels, out_channels=head_size, kernel_size=1, bias=False)
+        self.bn2 = nn.BatchNorm(head_size)
 
         # Pooling and classifier
         self.avgpool = AdaptiveAvgPool2d(1)
         self.dropout = nn.Dropout(drop_rate)
-        self.classifier = nn.Linear(1280, num_classes)
+        self.classifier = nn.Linear(head_size, num_classes)
 
     def __call__(self, x: mx.array) -> mx.array:
         """Forward pass.
@@ -240,24 +271,73 @@ class EfficientNet(nn.Module):
         return x
 
 
-def efficientnet_b0(num_classes: int = 1000) -> EfficientNet:
+def efficientnet_b0(num_classes: int = 1000, drop_rate: float = 0.2, drop_path_rate: float = 0.2) -> EfficientNet:
     """Create EfficientNet B0 model.
+
+    EfficientNet-B0 baseline:
+    - Depth multiplier: 1.0
+    - Width multiplier: 1.0
+    - Input resolution: 224x224
+    - Parameters: ~5.3M
 
     Args:
         num_classes (int): number of output classes. Defaults to 1000.
+        drop_rate (float): dropout rate before classifier. Defaults to 0.2.
+        drop_path_rate (float): stochastic depth rate. Defaults to 0.2.
 
     Returns:
         EfficientNet: EfficientNet B0 model
     """
-    return EfficientNet(num_classes=num_classes)
+    return EfficientNet(
+        num_classes=num_classes,
+        drop_rate=drop_rate,
+        drop_path_rate=drop_path_rate,
+        depth_multiplier=1.0,
+        channel_multiplier=1.0,
+    )
+
+
+def efficientnet_b1(num_classes: int = 1000, drop_rate: float = 0.2, drop_path_rate: float = 0.2) -> EfficientNet:
+    """Create EfficientNet B1 model.
+
+    EfficientNet-B1:
+    - Depth multiplier: 1.1
+    - Width multiplier: 1.0
+    - Input resolution: 240x240
+    - Parameters: ~7.8M
+
+    Args:
+        num_classes (int): number of output classes. Defaults to 1000.
+        drop_rate (float): dropout rate before classifier. Defaults to 0.2.
+        drop_path_rate (float): stochastic depth rate. Defaults to 0.2.
+
+    Returns:
+        EfficientNet: EfficientNet B1 model
+    """
+    return EfficientNet(
+        num_classes=num_classes,
+        drop_rate=drop_rate,
+        drop_path_rate=drop_path_rate,
+        depth_multiplier=1.1,
+        channel_multiplier=1.0,
+    )
 
 
 if __name__ == "__main__":
-    model = efficientnet_b0()
-    print(model)
+    # Test B0
+    print("Testing EfficientNet-B0:")
+    print("=" * 60)
+    model_b0 = efficientnet_b0()
+    x_b0 = mx.random.normal((1, 224, 224, 3))
+    out_b0 = model_b0(x_b0)
+    print(f"Input shape: {x_b0.shape}")
+    print(f"Output shape: {out_b0.shape}")
 
-    # Test with dummy input
-    x = mx.random.normal((1, 224, 224, 3))
-    out = model(x)
-    print(f"\nInput shape: {x.shape}")
-    print(f"Output shape: {out.shape}")
+    # Test B1
+    print("\nTesting EfficientNet-B1:")
+    print("=" * 60)
+    model_b1 = efficientnet_b1()
+    x_b1 = mx.random.normal((1, 240, 240, 3))
+    out_b1 = model_b1(x_b1)
+    print(f"Input shape: {x_b1.shape}")
+    print(f"Output shape: {out_b1.shape}")

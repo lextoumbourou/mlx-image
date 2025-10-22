@@ -80,6 +80,13 @@ def download_timm_weights(model_name: str, repo_id: str, output_dir: Path) -> st
     return model_path
 
 
+# Mapping of model names to their HuggingFace Hub repository IDs
+MODEL_REPO_MAP = {
+    "efficientnet_b0": "timm/efficientnet_b0.ra_in1k",
+    "efficientnet_b1": "timm/efficientnet_b1.ft_in1k",
+}
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(
         description="Download and convert PyTorch EfficientNet weights to MLX format"
@@ -88,13 +95,8 @@ def main() -> int:
         "--model",
         type=str,
         default="efficientnet_b0",
-        help="Model name (default: efficientnet_b0)",
-    )
-    parser.add_argument(
-        "--repo-id",
-        type=str,
-        default="timm/efficientnet_b0.ra_in1k",
-        help="HuggingFace Hub repository ID (default: timm/efficientnet_b0.ra_in1k)",
+        choices=list(MODEL_REPO_MAP.keys()),
+        help=f"Model name (choices: {', '.join(MODEL_REPO_MAP.keys())})",
     )
     parser.add_argument(
         "--output-dir",
@@ -105,11 +107,20 @@ def main() -> int:
 
     args = parser.parse_args()
 
-    output_dir = Path(args.output_dir)
+    # Get repository ID from model name
+    repo_id = MODEL_REPO_MAP[args.model]
+
+    # Create model-specific output directory
+    output_dir = Path(args.output_dir) / args.model
     output_dir.mkdir(parents=True, exist_ok=True)
 
+    print(f"\n{'='*60}")
+    print(f"Converting {args.model}")
+    print(f"Repository: {repo_id}")
+    print(f"{'='*60}\n")
+
     # Download PyTorch weights from HuggingFace Hub
-    pytorch_weights_path = download_timm_weights(args.model, args.repo_id, output_dir)
+    pytorch_weights_path = download_timm_weights(args.model, repo_id, output_dir)
 
     # Convert to MLX format
     mlx_weights_path = output_dir / "model_mlx.safetensors"
