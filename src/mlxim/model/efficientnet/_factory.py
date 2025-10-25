@@ -1,6 +1,7 @@
 """Factory functions for EfficientNet models."""
 from typing import List, Optional
 
+from .._config import HFWeights, Metrics, ModelConfig, Transform
 from ._blocks import MBConvConfig
 from .efficientnet import EfficientNet
 
@@ -61,11 +62,11 @@ def efficientnet_b0(num_classes: int = 1000, dropout: float = 0.2) -> EfficientN
     )
 
 
-# Configuration registry
+# Model configuration registry
 efficientnet_configs = {
-    "efficientnet_b0": {
-        "width_mult": 1.0,
-        "depth_mult": 1.0,
-        "dropout": 0.2,
-    },
+    "efficientnet_b0": ModelConfig(
+        metrics=Metrics(dataset="ImageNet-1K", accuracy_at_1=0.77692, accuracy_at_5=0.93532),
+        transform=Transform(img_size=224, crop_pct=224/256, interpolation="bicubic"),
+        weights=HFWeights(repo_id="mlx-vision/efficientnet_b0-mlxim", filename="model.safetensors"),
+    ),
 }

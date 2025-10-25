@@ -1,6 +1,7 @@
 """EfficientNet model implementation in MLX."""
 import copy
-from typing import List, Optional
+from pathlib import Path
+from typing import List, Optional, Union
 
 import mlx.core as mx
 import mlx.nn as nn
@@ -38,22 +39,25 @@ class EfficientNet(nn.Module):
         if norm_layer is None:
             norm_layer = nn.BatchNorm
 
-        # Building stem (first layer)
+        layers = []
+
+        # Building first layer (stem)
         firstconv_output_channels = inverted_residual_setting[0].input_channels
-        self.stem = Conv2dNormActivation(
-            3,
-            firstconv_output_channels,
-            kernel_size=3,
-            stride=2,
-            norm_layer=norm_layer,
-            activation_layer=nn.SiLU,
+        layers.append(
+            Conv2dNormActivation(
+                3,
+                firstconv_output_channels,
+                kernel_size=3,
+                stride=2,
+                norm_layer=norm_layer,
+                activation_layer=nn.SiLU,
+            )
         )
 
         # Building inverted residual blocks
         total_stage_blocks = sum(cnf.num_layers for cnf in inverted_residual_setting)
         stage_block_id = 0
 
-        self.blocks = []
         for cnf in inverted_residual_setting:
             stage = []
             for _ in range(cnf.num_layers):
@@ -71,21 +75,23 @@ class EfficientNet(nn.Module):
                 stage.append(MBConv(block_cnf, sd_prob, norm_layer))
                 stage_block_id += 1
 
-            self.blocks.append(stage)
+            layers.append(stage)
 
-        # Building head (last several layers)
+        # Building last several layers (head)
         lastconv_input_channels = inverted_residual_setting[-1].out_channels
         lastconv_output_channels = last_channel if last_channel is not None else 4 * lastconv_input_channels
-        self.head = Conv2dNormActivation(
-            lastconv_input_channels,
-            lastconv_output_channels,
-            kernel_size=1,
-            norm_layer=norm_layer,
-            activation_layer=nn.SiLU,
+        layers.append(
+            Conv2dNormActivation(
+                lastconv_input_channels,
+                lastconv_output_channels,
+                kernel_size=1,
+                norm_layer=norm_layer,
+                activation_layer=nn.SiLU,
+            )
         )
 
+        self.features = layers
         self.avgpool = AdaptiveAvgPool2d(1)
-
         self.classifier = nn.Sequential(
             nn.Dropout(dropout),
             nn.Linear(lastconv_output_channels, num_classes),
@@ -107,16 +113,15 @@ class EfficientNet(nn.Module):
         Returns:
             mx.array: Feature array
         """
-        # Pass through stem
-        x = self.stem(x)
-
-        # Pass through all MBConv blocks
-        for stage in self.blocks:
-            for block in stage:
-                x = block(x)
-
-        # Pass through head
-        x = self.head(x)
+        # Pass through all feature layers
+        for layer in self.features:
+            if isinstance(layer, list):
+                # Stage with multiple blocks
+                for block in layer:
+                    x = block(x)
+            else:
+                # Single layer (stem or head)
+                x = layer(x)
 
         x = self.avgpool(x)
         x = x.reshape((x.shape[0], -1))  # flatten operation
