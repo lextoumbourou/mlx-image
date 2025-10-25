@@ -1,5 +1,15 @@
 from ._blocks import MBConv, MBConvConfig
-from ._factory import efficientnet_b0, efficientnet_b1, efficientnet_b2, efficientnet_b3, efficientnet_b4, efficientnet_b5, efficientnet_b6, efficientnet_b7, efficientnet_configs
+from ._factory import (
+    efficientnet_b0,
+    efficientnet_b1,
+    efficientnet_b2,
+    efficientnet_b3,
+    efficientnet_b4,
+    efficientnet_b5,
+    efficientnet_b6,
+    efficientnet_b7,
+    efficientnet_configs,
+)
 from .efficientnet import EfficientNet
 
 __all__ = [
